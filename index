@@ -1,0 +1,103 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KI-Server</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-purple-900 to-blue-900 min-h-screen text-white">
+  <div class="container mx-auto p-6">
+    <h1 class="text-4xl font-bold mb-6 text-center">KI-Server</h1>
+    <div class="bg-purple-800 bg-opacity-70 p-6 rounded-lg shadow-lg">
+      <h2 class="text-2xl mb-4">API-Schlüssel verwalten</h2>
+      <input id="userId" type="text" placeholder="User ID (z.B. user123)" class="w-full p-2 mb-4 bg-gray-800 text-white rounded">
+      <input id="openaiKey" type="text" placeholder="OpenAI API Key" class="w-full p-2 mb-4 bg-gray-800 text-white rounded">
+      <input id="paypalClientId" type="text" placeholder="PayPal Client ID" class="w-full p-2 mb-4 bg-gray-800 text-white rounded">
+      <input id="paypalSecret" type="text" placeholder="PayPal Secret" class="w-full p-2 mb-4 bg-gray-800 text-white rounded">
+      <button onclick="saveKeys()" class="w-full p-2 bg-blue-600 hover:bg-blue-700 rounded">Schlüssel speichern</button>
+    </div>
+    <div class="mt-6 bg-purple-800 bg-opacity-70 p-6 rounded-lg shadow-lg">
+      <h2 class="text-2xl mb-4">Test-API</h2>
+      <textarea id="prompt" placeholder="Prompt (z.B. 'Bild erstellen: Futuristisches Auto')" class="w-full p-2 mb-4 bg-gray-800 text-white rounded"></textarea>
+      <button onclick="sendRequest()" class="w-full p-2 bg-blue-600 hover:bg-blue-700 rounded">Start</button>
+      <p class="mt-4">Status: <span id="status">Bereit</span></p>
+    </div>
+  </div>
+  <script>
+    async function saveKeys() {
+      const userId = document.getElementById('userId').value;
+      const openaiKey = document.getElementById('openaiKey').value;
+      const paypalClientId = document.getElementById('paypalClientId').value;
+      const paypalSecret = document.getElementById('paypalSecret').value;
+      try {
+        const res = await fetch('/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, openaiKey, paypalClientId, paypalSecret }),
+        });
+        const data = await res.json();
+        document.getElementById('status').textContent = data.message || 'Schlüssel gespeichert';
+      } catch (err) {
+        document.getElementById('status').textContent = 'Fehler beim Speichern';
+      }
+    }
+
+    async function sendRequest() {
+      const userId = document.getElementById('userId').value;
+      const prompt = document.getElementById('prompt').value;
+      const endpoint = prompt.includes('Bild erstellen') ? '/image' : '/chat';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, prompt }),
+        });
+        const data = await res.json();
+        document.getElementById('status').textContent = data.response || data.imageUrl || 'Anfrage erfolgreich';
+      } catch (err) {
+        document.getElementById('status').textContent = 'Fehler bei der Anfrage';
+      }
+    }
+  </script>
+</body>
+</html>
